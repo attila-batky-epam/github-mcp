@@ -63,6 +63,14 @@ Add to `.claude/.mcp.json`:
   - `require_reviews` (optional): Require pull request reviews (default: true)
   - `required_approving_review_count` (optional): Number of approvals needed (default: 0)
 
+- `create_pr` - Create a pull request
+  - `owner` (required): Repository owner (username or org)
+  - `repo` (required): Repository name
+  - `title` (required): Pull request title
+  - `body` (optional): Pull request description
+  - `head` (required): Branch containing changes
+  - `base` (optional): Branch to merge into (default: "main")
+
 ## Development
 
 This is a learning project to understand MCP server architecture.

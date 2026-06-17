@@ -96,6 +96,41 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ['owner', 'repo'],
         },
       },
+      {
+        name: 'create_pr',
+        description: 'Create a pull request',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            owner: {
+              type: 'string',
+              description: 'Repository owner (username or org)',
+            },
+            repo: {
+              type: 'string',
+              description: 'Repository name',
+            },
+            title: {
+              type: 'string',
+              description: 'Pull request title',
+            },
+            body: {
+              type: 'string',
+              description: 'Pull request description',
+            },
+            head: {
+              type: 'string',
+              description: 'Branch containing changes',
+            },
+            base: {
+              type: 'string',
+              description: 'Branch to merge into',
+              default: 'main',
+            },
+          },
+          required: ['owner', 'repo', 'title', 'head'],
+        },
+      },
     ],
   };
 });
@@ -111,6 +146,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     if (name === 'protect_branch') {
       return await protectBranch(args);
+    }
+
+    if (name === 'create_pr') {
+      return await createPR(args);
     }
 
     return {
@@ -217,6 +256,55 @@ async function protectBranch({
               `Branch: ${branch}\n` +
               `Require PRs: ${require_reviews}\n` +
               `Required approvals: ${required_approving_review_count}`,
+      },
+    ],
+  };
+}
+
+// GitHub API: Create pull request
+async function createPR({
+  owner,
+  repo,
+  title,
+  body = '',
+  head,
+  base = 'main'
+}) {
+  const response = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/pulls`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${GITHUB_TOKEN}`,
+        'Accept': 'application/vnd.github+json',
+        'Content-Type': 'application/json',
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+      body: JSON.stringify({
+        title,
+        body,
+        head,
+        base,
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(`GitHub API error: ${error.message || response.statusText}`);
+  }
+
+  const pr = await response.json();
+
+  return {
+    content: [
+      {
+        type: 'text',
+        text: `✓ Pull request created successfully!\n\n` +
+              `Title: ${pr.title}\n` +
+              `Number: #${pr.number}\n` +
+              `URL: ${pr.html_url}\n` +
+              `From: ${pr.head.ref} → ${pr.base.ref}`,
       },
     ],
   };
