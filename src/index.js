@@ -157,6 +157,88 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ['owner', 'repo', 'pr_number', 'body'],
         },
       },
+      {
+        name: 'get_pr',
+        description: 'Get details about a pull request',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            owner: {
+              type: 'string',
+              description: 'Repository owner (username or org)',
+            },
+            repo: {
+              type: 'string',
+              description: 'Repository name',
+            },
+            pr_number: {
+              type: 'number',
+              description: 'Pull request number',
+            },
+          },
+          required: ['owner', 'repo', 'pr_number'],
+        },
+      },
+      {
+        name: 'list_prs',
+        description: 'List pull requests for a repository',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            owner: {
+              type: 'string',
+              description: 'Repository owner (username or org)',
+            },
+            repo: {
+              type: 'string',
+              description: 'Repository name',
+            },
+            state: {
+              type: 'string',
+              description: 'Filter by state: open, closed, or all',
+              enum: ['open', 'closed', 'all'],
+              default: 'open',
+            },
+          },
+          required: ['owner', 'repo'],
+        },
+      },
+      {
+        name: 'merge_pr',
+        description: 'Merge a pull request',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            owner: {
+              type: 'string',
+              description: 'Repository owner (username or org)',
+            },
+            repo: {
+              type: 'string',
+              description: 'Repository name',
+            },
+            pr_number: {
+              type: 'number',
+              description: 'Pull request number',
+            },
+            merge_method: {
+              type: 'string',
+              description: 'Merge method to use',
+              enum: ['merge', 'squash', 'rebase'],
+              default: 'merge',
+            },
+            commit_title: {
+              type: 'string',
+              description: 'Title for the merge commit (optional)',
+            },
+            commit_message: {
+              type: 'string',
+              description: 'Message for the merge commit (optional)',
+            },
+          },
+          required: ['owner', 'repo', 'pr_number'],
+        },
+      },
     ],
   };
 });
@@ -180,6 +262,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     if (name === 'comment_on_pr') {
       return await commentOnPR(args);
+    }
+
+    if (name === 'get_pr') {
+      return await getPR(args);
+    }
+
+    if (name === 'list_prs') {
+      return await listPRs(args);
+    }
+
+    if (name === 'merge_pr') {
+      return await mergePR(args);
     }
 
     return {
@@ -375,6 +469,152 @@ async function commentOnPR({
         text: `✓ Comment posted successfully!\n\n` +
               `PR: #${pr_number}\n` +
               `Comment URL: ${comment.html_url}`,
+      },
+    ],
+  };
+}
+
+// GitHub API: Get pull request details
+async function getPR({
+  owner,
+  repo,
+  pr_number
+}) {
+  const response = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/pulls/${pr_number}`,
+    {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${GITHUB_TOKEN}`,
+        'Accept': 'application/vnd.github+json',
+        'Content-Type': 'application/json',
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(`GitHub API error: ${error.message || response.statusText}`);
+  }
+
+  const pr = await response.json();
+
+  return {
+    content: [
+      {
+        type: 'text',
+        text: `Pull Request #${pr.number}\n\n` +
+              `Title: ${pr.title}\n` +
+              `State: ${pr.state}\n` +
+              `Author: ${pr.user.login}\n` +
+              `Branch: ${pr.head.ref} → ${pr.base.ref}\n` +
+              `Mergeable: ${pr.mergeable ?? 'unknown'}\n` +
+              `Merged: ${pr.merged}\n` +
+              `URL: ${pr.html_url}\n\n` +
+              `${pr.body || '(no description)'}`,
+      },
+    ],
+  };
+}
+
+// GitHub API: List pull requests
+async function listPRs({
+  owner,
+  repo,
+  state = 'open'
+}) {
+  const response = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/pulls?state=${state}&per_page=30`,
+    {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${GITHUB_TOKEN}`,
+        'Accept': 'application/vnd.github+json',
+        'Content-Type': 'application/json',
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(`GitHub API error: ${error.message || response.statusText}`);
+  }
+
+  const prs = await response.json();
+
+  if (prs.length === 0) {
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `No ${state} pull requests found in ${owner}/${repo}`,
+        },
+      ],
+    };
+  }
+
+  const prList = prs.map(pr =>
+    `#${pr.number} - ${pr.title} (${pr.user.login}) [${pr.state}]`
+  ).join('\n');
+
+  return {
+    content: [
+      {
+        type: 'text',
+        text: `Pull Requests in ${owner}/${repo} (${state}):\n\n${prList}`,
+      },
+    ],
+  };
+}
+
+// GitHub API: Merge pull request
+async function mergePR({
+  owner,
+  repo,
+  pr_number,
+  merge_method = 'merge',
+  commit_title,
+  commit_message
+}) {
+  const body = {
+    merge_method,
+  };
+
+  if (commit_title) body.commit_title = commit_title;
+  if (commit_message) body.commit_message = commit_message;
+
+  const response = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/pulls/${pr_number}/merge`,
+    {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${GITHUB_TOKEN}`,
+        'Accept': 'application/vnd.github+json',
+        'Content-Type': 'application/json',
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+      body: JSON.stringify(body),
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(`GitHub API error: ${error.message || response.statusText}`);
+  }
+
+  const result = await response.json();
+
+  return {
+    content: [
+      {
+        type: 'text',
+        text: `✓ Pull request merged successfully!\n\n` +
+              `PR: #${pr_number}\n` +
+              `Method: ${merge_method}\n` +
+              `SHA: ${result.sha}\n` +
+              `Message: ${result.message}`,
       },
     ],
   };

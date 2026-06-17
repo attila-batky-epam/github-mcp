@@ -77,6 +77,24 @@ Add to `.claude/.mcp.json`:
   - `pr_number` (required): Pull request number
   - `body` (required): Comment text (supports Markdown)
 
+- `get_pr` - Get details about a pull request
+  - `owner` (required): Repository owner (username or org)
+  - `repo` (required): Repository name
+  - `pr_number` (required): Pull request number
+
+- `list_prs` - List pull requests for a repository
+  - `owner` (required): Repository owner (username or org)
+  - `repo` (required): Repository name
+  - `state` (optional): Filter by state - "open", "closed", or "all" (default: "open")
+
+- `merge_pr` - Merge a pull request
+  - `owner` (required): Repository owner (username or org)
+  - `repo` (required): Repository name
+  - `pr_number` (required): Pull request number
+  - `merge_method` (optional): "merge", "squash", or "rebase" (default: "merge")
+  - `commit_title` (optional): Custom merge commit title
+  - `commit_message` (optional): Custom merge commit message
+
 ## Development
 
 This is a learning project to understand MCP server architecture.
