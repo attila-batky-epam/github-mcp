@@ -71,6 +71,12 @@ Add to `.claude/.mcp.json`:
   - `head` (required): Branch containing changes
   - `base` (optional): Branch to merge into (default: "main")
 
+- `comment_on_pr` - Add a comment to a pull request
+  - `owner` (required): Repository owner (username or org)
+  - `repo` (required): Repository name
+  - `pr_number` (required): Pull request number
+  - `body` (required): Comment text (supports Markdown)
+
 ## Development
 
 This is a learning project to understand MCP server architecture.

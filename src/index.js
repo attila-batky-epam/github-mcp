@@ -131,6 +131,32 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ['owner', 'repo', 'title', 'head'],
         },
       },
+      {
+        name: 'comment_on_pr',
+        description: 'Add a comment to a pull request',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            owner: {
+              type: 'string',
+              description: 'Repository owner (username or org)',
+            },
+            repo: {
+              type: 'string',
+              description: 'Repository name',
+            },
+            pr_number: {
+              type: 'number',
+              description: 'Pull request number',
+            },
+            body: {
+              type: 'string',
+              description: 'Comment text (supports Markdown)',
+            },
+          },
+          required: ['owner', 'repo', 'pr_number', 'body'],
+        },
+      },
     ],
   };
 });
@@ -150,6 +176,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     if (name === 'create_pr') {
       return await createPR(args);
+    }
+
+    if (name === 'comment_on_pr') {
+      return await commentOnPR(args);
     }
 
     return {
@@ -305,6 +335,46 @@ async function createPR({
               `Number: #${pr.number}\n` +
               `URL: ${pr.html_url}\n` +
               `From: ${pr.head.ref} → ${pr.base.ref}`,
+      },
+    ],
+  };
+}
+
+// GitHub API: Comment on pull request
+async function commentOnPR({
+  owner,
+  repo,
+  pr_number,
+  body
+}) {
+  const response = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/issues/${pr_number}/comments`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${GITHUB_TOKEN}`,
+        'Accept': 'application/vnd.github+json',
+        'Content-Type': 'application/json',
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+      body: JSON.stringify({ body }),
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(`GitHub API error: ${error.message || response.statusText}`);
+  }
+
+  const comment = await response.json();
+
+  return {
+    content: [
+      {
+        type: 'text',
+        text: `✓ Comment posted successfully!\n\n` +
+              `PR: #${pr_number}\n` +
+              `Comment URL: ${comment.html_url}`,
       },
     ],
   };
