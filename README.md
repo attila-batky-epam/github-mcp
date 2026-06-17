@@ -4,8 +4,10 @@ A simple Model Context Protocol (MCP) server for GitHub operations.
 
 ## Features
 
-- Create GitHub repositories
-- More features coming: commits, pushes, PR comments
+- Create and manage pull requests
+- Comment on PRs
+- List and get PR details
+- Merge pull requests
 
 ## Setup
 
@@ -50,12 +52,6 @@ Add to `.claude/.mcp.json`:
 ```
 
 ### Available Tools
-
-- `create_repo` - Create a new GitHub repository
-  - `name` (required): Repository name
-  - `description` (optional): Repository description
-  - `private` (optional): Make repository private (default: false)
-  - `protect_main` (optional): Enable branch protection on main branch (requires PRs, no direct pushes) (default: false)
 
 - `create_pr` - Create a pull request
   - `owner` (required): Repository owner (username or org)

@@ -41,34 +41,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
       {
-        name: 'create_repo',
-        description: 'Create a new GitHub repository',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            name: {
-              type: 'string',
-              description: 'Repository name',
-            },
-            description: {
-              type: 'string',
-              description: 'Repository description',
-            },
-            private: {
-              type: 'boolean',
-              description: 'Make repository private',
-              default: false,
-            },
-            protect_main: {
-              type: 'boolean',
-              description: 'Enable branch protection on main branch (requires PRs, no direct pushes)',
-              default: false,
-            },
-          },
-          required: ['name'],
-        },
-      },
-      {
         name: 'create_pr',
         description: 'Create a pull request',
         inputSchema: {
@@ -220,10 +192,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
   try {
-    if (name === 'create_repo') {
-      return await createRepo(args);
-    }
-
     if (name === 'create_pr') {
       return await createPR(args);
     }
@@ -264,77 +232,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     };
   }
 });
-
-// GitHub API: Create repository
-async function createRepo({ name, description = '', private: isPrivate = false, protect_main = false }) {
-  const response = await fetch('https://api.github.com/user/repos', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${GITHUB_TOKEN}`,
-      'Accept': 'application/vnd.github+json',
-      'Content-Type': 'application/json',
-      'X-GitHub-Api-Version': '2022-11-28',
-    },
-    body: JSON.stringify({
-      name,
-      description,
-      private: isPrivate,
-    }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(`GitHub API error: ${error.message || response.statusText}`);
-  }
-
-  const repo = await response.json();
-
-  // Enable branch protection if requested
-  if (protect_main) {
-    const protection = {
-      required_pull_request_reviews: {
-        required_approving_review_count: 0,
-        dismiss_stale_reviews: false,
-        require_code_owner_reviews: false,
-      },
-      enforce_admins: false,
-      restrictions: null,
-      required_status_checks: null,
-      allow_force_pushes: false,
-      allow_deletions: false,
-    };
-
-    const protectResponse = await fetch(
-      `https://api.github.com/repos/${repo.owner.login}/${repo.name}/branches/main/protection`,
-      {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${GITHUB_TOKEN}`,
-          'Accept': 'application/vnd.github+json',
-          'Content-Type': 'application/json',
-          'X-GitHub-Api-Version': '2022-11-28',
-        },
-        body: JSON.stringify(protection),
-      }
-    );
-
-    if (!protectResponse.ok) {
-      const error = await protectResponse.json();
-      // Don't fail the whole operation if protection fails
-      console.error(`Warning: Could not enable branch protection: ${error.message}`);
-    }
-  }
-
-  return {
-    content: [
-      {
-        type: 'text',
-        text: `✓ Repository created successfully!\n\nName: ${repo.name}\nURL: ${repo.html_url}\nClone: ${repo.clone_url}` +
-              (protect_main ? '\nBranch Protection: Enabled on main' : ''),
-      },
-    ],
-  };
-}
 
 // GitHub API: Create pull request
 async function createPR({
