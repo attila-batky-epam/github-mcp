@@ -1,0 +1,19 @@
+{
+  "name": "github-mcp",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["mcp", "github", "git"],
+  "author": "",
+  "license": "ISC",
+  "description": "MCP server for GitHub operations",
+  "dependencies": {
+    "@codemieai/code": "^0.5.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "dotenv": "^17.4.2"
+  }
+}
