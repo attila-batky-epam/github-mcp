@@ -56,6 +56,45 @@ Add to `.claude/.mcp.json`:
   - `description` (optional): Repository description
   - `private` (optional): Make repository private (default: false)
 
+- `protect_branch` - Enable branch protection rules
+  - `owner` (required): Repository owner (username or org)
+  - `repo` (required): Repository name
+  - `branch` (optional): Branch name to protect (default: "main")
+  - `require_reviews` (optional): Require pull request reviews (default: true)
+  - `required_approving_review_count` (optional): Number of approvals needed (default: 0)
+
+- `create_pr` - Create a pull request
+  - `owner` (required): Repository owner (username or org)
+  - `repo` (required): Repository name
+  - `title` (required): Pull request title
+  - `body` (optional): Pull request description
+  - `head` (required): Branch containing changes
+  - `base` (optional): Branch to merge into (default: "main")
+
+- `comment_on_pr` - Add a comment to a pull request
+  - `owner` (required): Repository owner (username or org)
+  - `repo` (required): Repository name
+  - `pr_number` (required): Pull request number
+  - `body` (required): Comment text (supports Markdown)
+
+- `get_pr` - Get details about a pull request
+  - `owner` (required): Repository owner (username or org)
+  - `repo` (required): Repository name
+  - `pr_number` (required): Pull request number
+
+- `list_prs` - List pull requests for a repository
+  - `owner` (required): Repository owner (username or org)
+  - `repo` (required): Repository name
+  - `state` (optional): Filter by state - "open", "closed", or "all" (default: "open")
+
+- `merge_pr` - Merge a pull request
+  - `owner` (required): Repository owner (username or org)
+  - `repo` (required): Repository name
+  - `pr_number` (required): Pull request number
+  - `merge_method` (optional): "merge", "squash", or "rebase" (default: "merge")
+  - `commit_title` (optional): Custom merge commit title
+  - `commit_message` (optional): Custom merge commit message
+
 ## Development
 
 This is a learning project to understand MCP server architecture.
