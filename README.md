@@ -55,13 +55,7 @@ Add to `.claude/.mcp.json`:
   - `name` (required): Repository name
   - `description` (optional): Repository description
   - `private` (optional): Make repository private (default: false)
-
-- `protect_branch` - Enable branch protection rules
-  - `owner` (required): Repository owner (username or org)
-  - `repo` (required): Repository name
-  - `branch` (optional): Branch name to protect (default: "main")
-  - `require_reviews` (optional): Require pull request reviews (default: true)
-  - `required_approving_review_count` (optional): Number of approvals needed (default: 0)
+  - `protect_main` (optional): Enable branch protection on main branch (requires PRs, no direct pushes) (default: false)
 
 - `create_pr` - Create a pull request
   - `owner` (required): Repository owner (username or org)

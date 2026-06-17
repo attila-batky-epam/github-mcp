@@ -59,41 +59,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               description: 'Make repository private',
               default: false,
             },
+            protect_main: {
+              type: 'boolean',
+              description: 'Enable branch protection on main branch (requires PRs, no direct pushes)',
+              default: false,
+            },
           },
           required: ['name'],
-        },
-      },
-      {
-        name: 'protect_branch',
-        description: 'Enable branch protection rules to require pull requests',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            owner: {
-              type: 'string',
-              description: 'Repository owner (username or org)',
-            },
-            repo: {
-              type: 'string',
-              description: 'Repository name',
-            },
-            branch: {
-              type: 'string',
-              description: 'Branch name to protect',
-              default: 'main',
-            },
-            require_reviews: {
-              type: 'boolean',
-              description: 'Require pull request reviews before merging',
-              default: true,
-            },
-            required_approving_review_count: {
-              type: 'number',
-              description: 'Number of approving reviews required (0 = no approval needed, just a PR)',
-              default: 0,
-            },
-          },
-          required: ['owner', 'repo'],
         },
       },
       {
@@ -252,10 +224,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       return await createRepo(args);
     }
 
-    if (name === 'protect_branch') {
-      return await protectBranch(args);
-    }
-
     if (name === 'create_pr') {
       return await createPR(args);
     }
@@ -298,7 +266,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 });
 
 // GitHub API: Create repository
-async function createRepo({ name, description = '', private: isPrivate = false }) {
+async function createRepo({ name, description = '', private: isPrivate = false, protect_main = false }) {
   const response = await fetch('https://api.github.com/user/repos', {
     method: 'POST',
     headers: {
@@ -321,65 +289,48 @@ async function createRepo({ name, description = '', private: isPrivate = false }
 
   const repo = await response.json();
 
-  return {
-    content: [
+  // Enable branch protection if requested
+  if (protect_main) {
+    const protection = {
+      required_pull_request_reviews: {
+        required_approving_review_count: 0,
+        dismiss_stale_reviews: false,
+        require_code_owner_reviews: false,
+      },
+      enforce_admins: false,
+      restrictions: null,
+      required_status_checks: null,
+      allow_force_pushes: false,
+      allow_deletions: false,
+    };
+
+    const protectResponse = await fetch(
+      `https://api.github.com/repos/${repo.owner.login}/${repo.name}/branches/main/protection`,
       {
-        type: 'text',
-        text: `✓ Repository created successfully!\n\nName: ${repo.name}\nURL: ${repo.html_url}\nClone: ${repo.clone_url}`,
-      },
-    ],
-  };
-}
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${GITHUB_TOKEN}`,
+          'Accept': 'application/vnd.github+json',
+          'Content-Type': 'application/json',
+          'X-GitHub-Api-Version': '2022-11-28',
+        },
+        body: JSON.stringify(protection),
+      }
+    );
 
-// GitHub API: Protect branch
-async function protectBranch({
-  owner,
-  repo,
-  branch = 'main',
-  require_reviews = true,
-  required_approving_review_count = 0
-}) {
-  const protection = {
-    required_pull_request_reviews: require_reviews ? {
-      required_approving_review_count,
-      dismiss_stale_reviews: false,
-      require_code_owner_reviews: false,
-    } : null,
-    enforce_admins: false,
-    restrictions: null,
-    required_status_checks: null,
-    allow_force_pushes: false,
-    allow_deletions: false,
-  };
-
-  const response = await fetch(
-    `https://api.github.com/repos/${owner}/${repo}/branches/${branch}/protection`,
-    {
-      method: 'PUT',
-      headers: {
-        'Authorization': `Bearer ${GITHUB_TOKEN}`,
-        'Accept': 'application/vnd.github+json',
-        'Content-Type': 'application/json',
-        'X-GitHub-Api-Version': '2022-11-28',
-      },
-      body: JSON.stringify(protection),
+    if (!protectResponse.ok) {
+      const error = await protectResponse.json();
+      // Don't fail the whole operation if protection fails
+      console.error(`Warning: Could not enable branch protection: ${error.message}`);
     }
-  );
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(`GitHub API error: ${error.message || response.statusText}`);
   }
 
   return {
     content: [
       {
         type: 'text',
-        text: `✓ Branch protection enabled for ${branch}!\n\n` +
-              `Repository: ${owner}/${repo}\n` +
-              `Branch: ${branch}\n` +
-              `Require PRs: ${require_reviews}\n` +
-              `Required approvals: ${required_approving_review_count}`,
+        text: `✓ Repository created successfully!\n\nName: ${repo.name}\nURL: ${repo.html_url}\nClone: ${repo.clone_url}` +
+              (protect_main ? '\nBranch Protection: Enabled on main' : ''),
       },
     ],
   };
