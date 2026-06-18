@@ -2,7 +2,7 @@
 
 /**
  * GitHub MCP Server
- * Simple MCP server for GitHub operations: create repos, commit, push, PR comments
+ * MCP adapter layer for GitHub operations
  */
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -12,6 +12,7 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import dotenv from 'dotenv';
+import * as github from './github-api.js';
 
 // Load environment variables
 dotenv.config();
@@ -187,36 +188,40 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   };
 });
 
-// Handle tool calls
+// Handle tool calls - thin adapter to github-api.js
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
   try {
+    let result;
+
     if (name === 'create_pr') {
-      return await createPR(args);
+      result = await github.createPR({ token: GITHUB_TOKEN, ...args });
+    } else if (name === 'comment_on_pr') {
+      result = await github.commentOnPR({ token: GITHUB_TOKEN, ...args });
+    } else if (name === 'get_pr') {
+      result = await github.getPR({ token: GITHUB_TOKEN, ...args });
+    } else if (name === 'list_prs') {
+      result = await github.listPRs({ token: GITHUB_TOKEN, ...args });
+    } else if (name === 'merge_pr') {
+      result = await github.mergePR({ token: GITHUB_TOKEN, ...args });
+    } else {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Unknown tool: ${name}`,
+          },
+        ],
+      };
     }
 
-    if (name === 'comment_on_pr') {
-      return await commentOnPR(args);
-    }
-
-    if (name === 'get_pr') {
-      return await getPR(args);
-    }
-
-    if (name === 'list_prs') {
-      return await listPRs(args);
-    }
-
-    if (name === 'merge_pr') {
-      return await mergePR(args);
-    }
-
+    // Convert github-api result to MCP format
     return {
       content: [
         {
           type: 'text',
-          text: `Unknown tool: ${name}`,
+          text: result.message,
         },
       ],
     };
@@ -232,241 +237,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     };
   }
 });
-
-// GitHub API: Create pull request
-async function createPR({
-  owner,
-  repo,
-  title,
-  body = '',
-  head,
-  base = 'main'
-}) {
-  const response = await fetch(
-    `https://api.github.com/repos/${owner}/${repo}/pulls`,
-    {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${GITHUB_TOKEN}`,
-        'Accept': 'application/vnd.github+json',
-        'Content-Type': 'application/json',
-        'X-GitHub-Api-Version': '2022-11-28',
-      },
-      body: JSON.stringify({
-        title,
-        body,
-        head,
-        base,
-      }),
-    }
-  );
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(`GitHub API error: ${error.message || response.statusText}`);
-  }
-
-  const pr = await response.json();
-
-  return {
-    content: [
-      {
-        type: 'text',
-        text: `✓ Pull request created successfully!\n\n` +
-              `Title: ${pr.title}\n` +
-              `Number: #${pr.number}\n` +
-              `URL: ${pr.html_url}\n` +
-              `From: ${pr.head.ref} → ${pr.base.ref}`,
-      },
-    ],
-  };
-}
-
-// GitHub API: Comment on pull request
-async function commentOnPR({
-  owner,
-  repo,
-  pr_number,
-  body
-}) {
-  const response = await fetch(
-    `https://api.github.com/repos/${owner}/${repo}/issues/${pr_number}/comments`,
-    {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${GITHUB_TOKEN}`,
-        'Accept': 'application/vnd.github+json',
-        'Content-Type': 'application/json',
-        'X-GitHub-Api-Version': '2022-11-28',
-      },
-      body: JSON.stringify({ body }),
-    }
-  );
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(`GitHub API error: ${error.message || response.statusText}`);
-  }
-
-  const comment = await response.json();
-
-  return {
-    content: [
-      {
-        type: 'text',
-        text: `✓ Comment posted successfully!\n\n` +
-              `PR: #${pr_number}\n` +
-              `Comment URL: ${comment.html_url}`,
-      },
-    ],
-  };
-}
-
-// GitHub API: Get pull request details
-async function getPR({
-  owner,
-  repo,
-  pr_number
-}) {
-  const response = await fetch(
-    `https://api.github.com/repos/${owner}/${repo}/pulls/${pr_number}`,
-    {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${GITHUB_TOKEN}`,
-        'Accept': 'application/vnd.github+json',
-        'Content-Type': 'application/json',
-        'X-GitHub-Api-Version': '2022-11-28',
-      },
-    }
-  );
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(`GitHub API error: ${error.message || response.statusText}`);
-  }
-
-  const pr = await response.json();
-
-  return {
-    content: [
-      {
-        type: 'text',
-        text: `Pull Request #${pr.number}\n\n` +
-              `Title: ${pr.title}\n` +
-              `State: ${pr.state}\n` +
-              `Author: ${pr.user.login}\n` +
-              `Branch: ${pr.head.ref} → ${pr.base.ref}\n` +
-              `Mergeable: ${pr.mergeable ?? 'unknown'}\n` +
-              `Merged: ${pr.merged}\n` +
-              `URL: ${pr.html_url}\n\n` +
-              `${pr.body || '(no description)'}`,
-      },
-    ],
-  };
-}
-
-// GitHub API: List pull requests
-async function listPRs({
-  owner,
-  repo,
-  state = 'open'
-}) {
-  const response = await fetch(
-    `https://api.github.com/repos/${owner}/${repo}/pulls?state=${state}&per_page=30`,
-    {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${GITHUB_TOKEN}`,
-        'Accept': 'application/vnd.github+json',
-        'Content-Type': 'application/json',
-        'X-GitHub-Api-Version': '2022-11-28',
-      },
-    }
-  );
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(`GitHub API error: ${error.message || response.statusText}`);
-  }
-
-  const prs = await response.json();
-
-  if (prs.length === 0) {
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `No ${state} pull requests found in ${owner}/${repo}`,
-        },
-      ],
-    };
-  }
-
-  const prList = prs.map(pr =>
-    `#${pr.number} - ${pr.title} (${pr.user.login}) [${pr.state}]`
-  ).join('\n');
-
-  return {
-    content: [
-      {
-        type: 'text',
-        text: `Pull Requests in ${owner}/${repo} (${state}):\n\n${prList}`,
-      },
-    ],
-  };
-}
-
-// GitHub API: Merge pull request
-async function mergePR({
-  owner,
-  repo,
-  pr_number,
-  merge_method = 'merge',
-  commit_title,
-  commit_message
-}) {
-  const body = {
-    merge_method,
-  };
-
-  if (commit_title) body.commit_title = commit_title;
-  if (commit_message) body.commit_message = commit_message;
-
-  const response = await fetch(
-    `https://api.github.com/repos/${owner}/${repo}/pulls/${pr_number}/merge`,
-    {
-      method: 'PUT',
-      headers: {
-        'Authorization': `Bearer ${GITHUB_TOKEN}`,
-        'Accept': 'application/vnd.github+json',
-        'Content-Type': 'application/json',
-        'X-GitHub-Api-Version': '2022-11-28',
-      },
-      body: JSON.stringify(body),
-    }
-  );
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(`GitHub API error: ${error.message || response.statusText}`);
-  }
-
-  const result = await response.json();
-
-  return {
-    content: [
-      {
-        type: 'text',
-        text: `✓ Pull request merged successfully!\n\n` +
-              `PR: #${pr_number}\n` +
-              `Method: ${merge_method}\n` +
-              `SHA: ${result.sha}\n` +
-              `Message: ${result.message}`,
-      },
-    ],
-  };
-}
 
 // Start the server
 async function main() {
