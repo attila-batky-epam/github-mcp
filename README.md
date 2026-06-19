@@ -29,10 +29,12 @@ A simple Model Context Protocol (MCP) server for GitHub operations.
 
 ## Usage
 
-### Test directly:
+### Run the MCP server:
 ```bash
 npm start
 ```
+
+For testing and examples, see the [examples/](examples/) directory.
 
 ### Configure with Claude Code:
 
