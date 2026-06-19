@@ -13,6 +13,48 @@ const PR_NUMBER = parseInt(process.env.PR_NUMBER);
 const REPO_OWNER = process.env.REPO_OWNER;
 const REPO_NAME = process.env.REPO_NAME;
 
+// Analysis thresholds
+const THRESHOLDS = {
+  MAGIC_NUMBER_DIGITS: 3,
+  DEEP_NESTING_LEVEL: 6,
+  LARGE_CHANGE_LINES: 200,
+  MANY_FILES_COUNT: 10,
+  PAGINATION_SIZE: 30,
+  LOW_TEST_COVERAGE_RATIO: 0.5,
+  MAX_GROUPED_ISSUES: 3,
+};
+
+// Pre-compiled regex patterns for performance
+const PATTERNS = {
+  // File patterns
+  DIFF_FILE: /b\/(.*?)$/,
+  TEST_FILE: /\.(test|spec)\.|test\.js$/,
+  IMPLEMENTATION_FILE: /\.(js|ts|jsx|tsx|py|java|go|rb)$/,
+  DOC_FILE: /README|\.md/,
+
+  // Security patterns
+  SECRET: /(password|secret|api[_-]?key|token|private[_-]?key)\s*[=:]\s*["'][^"']{8,}/i,
+  SQL_INJECTION: /execute\s*\(.*\+|query\s*\(.*\+|\$\{.*\}.*SELECT|eval\s*\(/i,
+  COMMAND_INJECTION: /exec\s*\(|system\s*\(|shell_exec|child_process\.exec.*\+/,
+  XSS: /innerHTML|dangerouslySetInnerHTML|document\.write/,
+
+  // Breaking changes
+  EXPORT_STATEMENT: /export\s+(function|class|const|let|var|default)/,
+  FUNCTION_SIGNATURE: /function\s+\w+\s*\([^)]*\)|const\s+\w+\s*=\s*\([^)]*\)\s*=>/,
+
+  // Maintainability patterns
+  TODO_COMMENT: /\/\/\s*TODO|\/\/\s*FIXME|\/\/\s*HACK/i,
+  MAGIC_NUMBER: /\b\d{3,}\b/,
+  CONTROL_FLOW: /^(if|for|while|switch)\s*\(/,
+  CONSOLE_LOG: /console\.(log|debug|warn)/,
+  COMMENT_OR_DOC: /^\s*\/\/|^\s*\*/,
+
+  // Architecture patterns
+  UI_COMPONENT_FILE: /component|view|page/i,
+  API_CALL: /fetch\s*\(|axios\.|query\(/,
+  CLASS_DECLARATION: /class\s+\w+/,
+};
+
 if (!GITHUB_TOKEN || !PR_NUMBER || !REPO_OWNER || !REPO_NAME) {
   console.error('Error: Missing required environment variables');
   console.error('Required: GITHUB_TOKEN, PR_NUMBER, REPO_OWNER, REPO_NAME');
@@ -77,16 +119,16 @@ function analyzeDiff(diff) {
   for (const line of lines) {
     // Track current file
     if (line.startsWith('diff --git')) {
-      const match = line.match(/b\/(.*?)$/);
+      const match = PATTERNS.DIFF_FILE.exec(line);
       if (match) {
         currentFile = match[1];
         stats.filesChanged.add(currentFile);
 
         // Track test vs implementation files
-        if (currentFile.includes('.test.') || currentFile.includes('.spec.') || currentFile.includes('test.js')) {
+        if (PATTERNS.TEST_FILE.test(currentFile)) {
           testFiles.add(currentFile);
           stats.hasTests = true;
-        } else if (currentFile.match(/\.(js|ts|jsx|tsx|py|java|go|rb)$/)) {
+        } else if (PATTERNS.IMPLEMENTATION_FILE.test(currentFile)) {
           modifiedFiles.add(currentFile);
         }
       }
@@ -97,14 +139,14 @@ function analyzeDiff(diff) {
     if (line.startsWith('-') && !line.startsWith('---')) stats.deletions++;
 
     // Doc changes
-    if (line.includes('README') || line.includes('.md')) {
+    if (PATTERNS.DOC_FILE.test(line)) {
       stats.hasDocChanges = true;
     }
 
     // SECURITY CHECKS
     // Hardcoded secrets/credentials
     if (line.startsWith('+') && !line.startsWith('+++')) {
-      if (line.match(/(password|secret|api[_-]?key|token|private[_-]?key)\s*[=:]\s*["'][^"']{8,}/i)) {
+      if (PATTERNS.SECRET.test(line)) {
         stats.securityRisks.push({
           type: 'Hardcoded Secret',
           file: currentFile,
@@ -114,7 +156,7 @@ function analyzeDiff(diff) {
       }
 
       // SQL injection risks
-      if (line.match(/execute\s*\(.*\+|query\s*\(.*\+|\$\{.*\}.*SELECT|eval\s*\(/i)) {
+      if (PATTERNS.SQL_INJECTION.test(line)) {
         stats.securityRisks.push({
           type: 'SQL Injection Risk',
           file: currentFile,
@@ -124,7 +166,7 @@ function analyzeDiff(diff) {
       }
 
       // Command injection
-      if (line.match(/exec\s*\(|system\s*\(|shell_exec|child_process\.exec.*\+/)) {
+      if (PATTERNS.COMMAND_INJECTION.test(line)) {
         stats.securityRisks.push({
           type: 'Command Injection Risk',
           file: currentFile,
@@ -134,7 +176,7 @@ function analyzeDiff(diff) {
       }
 
       // XSS risks
-      if (line.match(/innerHTML|dangerouslySetInnerHTML|document\.write/)) {
+      if (PATTERNS.XSS.test(line)) {
         stats.securityRisks.push({
           type: 'XSS Risk',
           file: currentFile,
@@ -147,7 +189,7 @@ function analyzeDiff(diff) {
     // BREAKING CHANGES
     if (line.startsWith('-') && !line.startsWith('---')) {
       // Removed public API/exports
-      if (line.match(/export\s+(function|class|const|let|var|default)/)) {
+      if (PATTERNS.EXPORT_STATEMENT.test(line)) {
         stats.breakingChanges.push({
           file: currentFile,
           detail: 'Removed or modified exported function/class'
@@ -155,7 +197,7 @@ function analyzeDiff(diff) {
       }
 
       // Changed function signatures
-      if (line.match(/function\s+\w+\s*\([^)]*\)|const\s+\w+\s*=\s*\([^)]*\)\s*=>/)) {
+      if (PATTERNS.FUNCTION_SIGNATURE.test(line)) {
         const nextLines = lines.slice(lines.indexOf(line), lines.indexOf(line) + 3);
         if (nextLines.some(l => l.startsWith('+') && l.match(/function|=>/))) {
           stats.breakingChanges.push({
@@ -172,7 +214,7 @@ function analyzeDiff(diff) {
       const trimmed = line.substring(1).trim();
 
       // TODO comments
-      if (line.match(/\/\/\s*TODO|\/\/\s*FIXME|\/\/\s*HACK/i)) {
+      if (PATTERNS.TODO_COMMENT.test(line)) {
         stats.maintainabilityIssues.push({
           type: 'TODO/FIXME',
           file: currentFile,
@@ -181,7 +223,7 @@ function analyzeDiff(diff) {
       }
 
       // Magic numbers
-      if (trimmed.match(/\b\d{3,}\b/) && !trimmed.match(/^\s*\/\/|^\s*\*/)) {
+      if (PATTERNS.MAGIC_NUMBER.test(trimmed) && !PATTERNS.COMMENT_OR_DOC.test(trimmed)) {
         stats.maintainabilityIssues.push({
           type: 'Magic Number',
           file: currentFile,
@@ -191,7 +233,7 @@ function analyzeDiff(diff) {
 
       // Deeply nested code (more than 3 levels)
       const indentLevel = (line.match(/^\+(\s+)/)?.[1]?.length || 0) / 2;
-      if (indentLevel > 6 && trimmed.match(/^(if|for|while|switch)\s*\(/)) {
+      if (indentLevel > THRESHOLDS.DEEP_NESTING_LEVEL && PATTERNS.CONTROL_FLOW.test(trimmed)) {
         stats.maintainabilityIssues.push({
           type: 'Deep Nesting',
           file: currentFile,
@@ -200,7 +242,7 @@ function analyzeDiff(diff) {
       }
 
       // Console.log in production code
-      if (trimmed.match(/console\.(log|debug|warn)/) && !currentFile.includes('test')) {
+      if (PATTERNS.CONSOLE_LOG.test(trimmed) && !currentFile.includes('test')) {
         stats.maintainabilityIssues.push({
           type: 'Debug Code',
           file: currentFile,
@@ -212,7 +254,7 @@ function analyzeDiff(diff) {
     // SEPARATION OF CONCERNS
     if (line.startsWith('+') && !line.startsWith('+++')) {
       // Business logic in UI components
-      if (currentFile.match(/component|view|page/i) && line.match(/fetch\s*\(|axios\.|query\(/)) {
+      if (PATTERNS.UI_COMPONENT_FILE.test(currentFile) && PATTERNS.API_CALL.test(line)) {
         stats.separationConcerns.push({
           file: currentFile,
           detail: 'API calls in UI component - consider moving to service layer'
@@ -220,7 +262,7 @@ function analyzeDiff(diff) {
       }
 
       // Mixed responsibilities
-      if (line.match(/class\s+\w+/) && currentFile.length > 300) {
+      if (PATTERNS.CLASS_DECLARATION.test(line) && currentFile.length > 300) {
         stats.separationConcerns.push({
           file: currentFile,
           detail: 'Large class - may have multiple responsibilities'
@@ -234,11 +276,11 @@ function analyzeDiff(diff) {
   stats.testCoverage.tested = testFiles.size;
 
   // Refactor suggestions based on patterns
-  if (stats.additions > 200 && stats.filesChanged.size === 1) {
+  if (stats.additions > THRESHOLDS.LARGE_CHANGE_LINES && stats.filesChanged.size === 1) {
     stats.refactorSuggestions.push('Large single-file change - consider splitting into smaller commits or modules');
   }
 
-  if (modifiedFiles.size > 10) {
+  if (modifiedFiles.size > THRESHOLDS.MANY_FILES_COUNT) {
     stats.refactorSuggestions.push('Many files modified - ensure changes are cohesive and related');
   }
 
@@ -319,7 +361,7 @@ function generateReview(stats, diff) {
     if (stats.testCoverage.tested === 0) {
       review += '- ❌ No test files modified for code changes\n';
       review += `- ${stats.testCoverage.modified} implementation file(s) changed with no corresponding tests\n`;
-    } else if (coverageRatio < 0.5) {
+    } else if (coverageRatio < THRESHOLDS.LOW_TEST_COVERAGE_RATIO) {
       review += '- ⚠️ Limited test coverage\n';
       review += `- ${stats.testCoverage.tested} test file(s) for ${stats.testCoverage.modified} implementation file(s)\n`;
     } else {
@@ -339,11 +381,11 @@ function generateReview(stats, diff) {
     const grouped = groupBy(stats.maintainabilityIssues, 'type');
     Object.keys(grouped).forEach(type => {
       review += `**${type}** (${grouped[type].length} instance${grouped[type].length > 1 ? 's' : ''})\n`;
-      grouped[type].slice(0, 3).forEach(issue => {
+      grouped[type].slice(0, THRESHOLDS.MAX_GROUPED_ISSUES).forEach(issue => {
         review += `- \`${issue.file}\`: ${issue.detail}\n`;
       });
-      if (grouped[type].length > 3) {
-        review += `- ... and ${grouped[type].length - 3} more\n`;
+      if (grouped[type].length > THRESHOLDS.MAX_GROUPED_ISSUES) {
+        review += `- ... and ${grouped[type].length - THRESHOLDS.MAX_GROUPED_ISSUES} more\n`;
       }
       review += '\n';
     });
