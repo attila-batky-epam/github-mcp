@@ -1,0 +1,96 @@
+name: Branch Naming Check
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  check-branch-name:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check branch naming convention
+        run: |
+          BRANCH_NAME="${{ github.head_ref }}"
+
+          echo "Checking branch name: $BRANCH_NAME"
+
+          # Define the branch naming pattern
+          # Allowed formats:
+          #   feature/GHMCP-{number}-{description}
+          #   bugfix/GHMCP-{number}-{description}
+          #   hotfix/GHMCP-{number}-{description}
+          #   chore/GHMCP-{number}-{description}
+          #   docs/GHMCP-{number}-{description}
+          #   refactor/GHMCP-{number}-{description}
+
+          PATTERN="^(feature|bugfix|hotfix|chore|docs|refactor)/GHMCP-[0-9]+-[a-z0-9-]+$"
+
+          if [[ ! $BRANCH_NAME =~ $PATTERN ]]; then
+            echo "❌ Branch name '$BRANCH_NAME' does not follow the naming convention!"
+            echo ""
+            echo "Expected format:"
+            echo "  <type>/GHMCP-<number>-<description>"
+            echo ""
+            echo "Where:"
+            echo "  <type> is one of: feature, bugfix, hotfix, chore, docs, refactor"
+            echo "  <number> is a ticket/issue number"
+            echo "  <description> is lowercase with hyphens (e.g., 'add-new-feature')"
+            echo ""
+            echo "Examples:"
+            echo "  ✅ feature/GHMCP-123-add-user-auth"
+            echo "  ✅ bugfix/GHMCP-456-fix-login-error"
+            echo "  ✅ hotfix/GHMCP-789-patch-security-issue"
+            echo "  ❌ feature/my-feature (missing GHMCP prefix)"
+            echo "  ❌ add-feature (missing type prefix)"
+            echo "  ❌ feature/GHMCP-123 (missing description)"
+            exit 1
+          fi
+
+          echo "✅ Branch name follows the convention!"
+
+      - name: Post comment on PR
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const branchName = context.payload.pull_request.head.ref;
+            const comment = `## ❌ Branch Naming Convention Check Failed
+
+            The branch name \`${branchName}\` does not follow our naming convention.
+
+            ### Expected Format
+            \`\`\`
+            <type>/GHMCP-<number>-<description>
+            \`\`\`
+
+            ### Where:
+            - **type**: \`feature\`, \`bugfix\`, \`hotfix\`, \`chore\`, \`docs\`, or \`refactor\`
+            - **number**: Ticket/issue number
+            - **description**: Lowercase with hyphens
+
+            ### Valid Examples
+            - ✅ \`feature/GHMCP-123-add-user-auth\`
+            - ✅ \`bugfix/GHMCP-456-fix-login-error\`
+            - ✅ \`hotfix/GHMCP-789-patch-security-issue\`
+            - ✅ \`chore/GHMCP-100-update-dependencies\`
+            - ✅ \`docs/GHMCP-200-update-readme\`
+            - ✅ \`refactor/GHMCP-300-clean-api-layer\`
+
+            ### Invalid Examples
+            - ❌ \`feature/my-feature\` (missing GHMCP prefix)
+            - ❌ \`add-feature\` (missing type prefix)
+            - ❌ \`feature/GHMCP-123\` (missing description)
+            - ❌ \`feature/GHMCP-123-AddFeature\` (uppercase in description)
+
+            Please rename your branch and create a new PR with the correct naming convention.`;
+
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: comment
+            });
