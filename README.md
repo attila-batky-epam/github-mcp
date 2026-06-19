@@ -142,9 +142,27 @@ Add to `.claude/.mcp.json`:
 3. Build TypeScript: `npm run build`
 4. Run in dev mode: `npm run dev`
 
+### Testing
+
+This project uses Vitest for unit testing:
+
+- **58 test cases** covering happy paths, error handling, and edge cases
+- **100% coverage** on core API functions
+- **Security pattern detection** tests for SQL injection, XSS, command injection
+- **Fast execution** with Vitest's modern test runner
+
+Run tests:
+```bash
+npm test                  # Run all tests
+npm run test:watch        # Watch mode for development
+npm run test:coverage     # Generate coverage report
+npm run test:ui           # Interactive test UI
+```
+
 ### CI/CD
 
 This project uses GitHub Actions for continuous integration:
+- **Automated testing** with coverage reports on all PRs
 - **Automated builds** on all PRs and pushes to main
 - **Type checking** to catch TypeScript errors
 - **Multi-version testing** (Node 18.x, 20.x, 22.x)
@@ -156,9 +174,13 @@ The CI workflows are for repo contributors only - end users receive pre-built pa
 
 - `npm run build` - Compile TypeScript to JavaScript
 - `npm run dev` - Run with tsx (no build needed)
-- `npm run clean` - Remove build artifacts
+- `npm run clean` - Remove build and coverage artifacts
 - `npm start` - Run compiled JavaScript
 - `npm run review-pr` - Run PR review tool
+- `npm test` - Run test suite
+- `npm run test:watch` - Run tests in watch mode
+- `npm run test:coverage` - Run tests with coverage report
+- `npm run test:ui` - Run tests with interactive UI
 
 ## Package Distribution
 
