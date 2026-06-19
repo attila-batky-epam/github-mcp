@@ -27,9 +27,19 @@ A simple Model Context Protocol (MCP) server for GitHub operations.
    npm install
    ```
 
+4. Build the TypeScript project:
+   ```bash
+   npm run build
+   ```
+
 ## Usage
 
-### Run the MCP server:
+### Development mode (with TypeScript directly):
+```bash
+npm run dev
+```
+
+### Production mode (compiled JavaScript):
 ```bash
 npm start
 ```
@@ -44,7 +54,7 @@ Add to `.claude/.mcp.json`:
   "mcpServers": {
     "github": {
       "command": "node",
-      "args": ["C:/code/github-mcp/src/index.js"],
+      "args": ["C:/code/github-mcp/dist/index.js"],
       "env": {
         "GITHUB_TOKEN": "your-token-here"
       }

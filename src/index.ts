@@ -188,7 +188,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   };
 });
 
-// Handle tool calls - thin adapter to github-api.js
+// Handle tool calls - thin adapter to github-api.ts
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
@@ -196,15 +196,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     let result;
 
     if (name === 'create_pr') {
-      result = await github.createPR({ token: GITHUB_TOKEN, ...args });
+      result = await github.createPR({ token: GITHUB_TOKEN, ...args } as Parameters<typeof github.createPR>[0]);
     } else if (name === 'comment_on_pr') {
-      result = await github.commentOnPR({ token: GITHUB_TOKEN, ...args });
+      result = await github.commentOnPR({ token: GITHUB_TOKEN, ...args } as Parameters<typeof github.commentOnPR>[0]);
     } else if (name === 'get_pr') {
-      result = await github.getPR({ token: GITHUB_TOKEN, ...args });
+      result = await github.getPR({ token: GITHUB_TOKEN, ...args } as Parameters<typeof github.getPR>[0]);
     } else if (name === 'list_prs') {
-      result = await github.listPRs({ token: GITHUB_TOKEN, ...args });
+      result = await github.listPRs({ token: GITHUB_TOKEN, ...args } as Parameters<typeof github.listPRs>[0]);
     } else if (name === 'merge_pr') {
-      result = await github.mergePR({ token: GITHUB_TOKEN, ...args });
+      result = await github.mergePR({ token: GITHUB_TOKEN, ...args } as Parameters<typeof github.mergePR>[0]);
     } else {
       return {
         content: [
@@ -226,11 +226,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       ],
     };
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return {
       content: [
         {
           type: 'text',
-          text: `Error: ${error.message}`,
+          text: `Error: ${errorMessage}`,
         },
       ],
       isError: true,
@@ -239,7 +240,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 });
 
 // Start the server
-async function main() {
+async function main(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error('GitHub MCP server running on stdio');
