@@ -1,6 +1,6 @@
 # GitHub MCP Server
 
-A simple Model Context Protocol (MCP) server for GitHub operations.
+A Model Context Protocol (MCP) server for GitHub operations, written in TypeScript.
 
 ## Features
 
@@ -8,8 +8,25 @@ A simple Model Context Protocol (MCP) server for GitHub operations.
 - Comment on PRs
 - List and get PR details
 - Merge pull requests
+- Automated PR review with security and quality checks
 
-## Setup
+## Installation & Setup
+
+### For End Users (via npm)
+
+```bash
+# Install globally
+npm install -g github-mcp
+
+# Or install locally in your project
+npm install github-mcp
+```
+
+The package comes **pre-built** with compiled JavaScript - no TypeScript setup needed!
+
+### For Contributors (from source)
+
+If you're developing or contributing to this project:
 
 1. Create a GitHub Personal Access Token:
    - Go to https://github.com/settings/tokens?type=beta
@@ -34,19 +51,38 @@ A simple Model Context Protocol (MCP) server for GitHub operations.
 
 ## Usage
 
-### Development mode (with TypeScript directly):
+### As an npm package (recommended for end users):
+
+After installing via npm, configure in your MCP client:
+
+```json
+{
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": ["-y", "github-mcp"],
+      "env": {
+        "GITHUB_TOKEN": "your-token-here"
+      }
+    }
+  }
+}
+```
+
+### From source (for contributors):
+
+**Development mode** (TypeScript with hot reload):
 ```bash
 npm run dev
 ```
 
-### Production mode (compiled JavaScript):
+**Production mode** (compiled JavaScript):
 ```bash
+npm run build
 npm start
 ```
 
-For testing and examples, see the [examples/](examples/) directory.
-
-### Configure with Claude Code:
+### Configure with Claude Code (local development):
 
 Add to `.claude/.mcp.json`:
 ```json
@@ -97,6 +133,40 @@ Add to `.claude/.mcp.json`:
   - `commit_title` (optional): Custom merge commit title
   - `commit_message` (optional): Custom merge commit message
 
-## Development
+## Contributing
 
-This is a learning project to understand MCP server architecture.
+### Development Setup
+
+1. Clone the repository
+2. Install dependencies: `npm install`
+3. Build TypeScript: `npm run build`
+4. Run in dev mode: `npm run dev`
+
+### CI/CD
+
+This project uses GitHub Actions for continuous integration:
+- **Automated builds** on all PRs and pushes to main
+- **Type checking** to catch TypeScript errors
+- **Multi-version testing** (Node 18.x, 20.x, 22.x)
+- **Automated PR reviews** with security and quality checks
+
+The CI workflows are for repo contributors only - end users receive pre-built packages.
+
+### Scripts
+
+- `npm run build` - Compile TypeScript to JavaScript
+- `npm run dev` - Run with tsx (no build needed)
+- `npm run clean` - Remove build artifacts
+- `npm start` - Run compiled JavaScript
+- `npm run review-pr` - Run PR review tool
+
+## Package Distribution
+
+When published to npm:
+- ✅ Pre-built JavaScript included (`dist/` directory)
+- ✅ TypeScript definitions included (`.d.ts` files)
+- ❌ Source TypeScript excluded
+- ❌ CI workflows excluded
+- ❌ Development files excluded
+
+End users get a ready-to-use package with no build step required!
