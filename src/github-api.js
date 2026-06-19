@@ -6,7 +6,37 @@
 // API Configuration
 const GITHUB_API_CONFIG = {
   PER_PAGE: 30,
+  API_VERSION: '2022-11-28',
 };
+
+/**
+ * Create GitHub API headers with authentication
+ */
+function getHeaders(token) {
+  return {
+    'Authorization': `Bearer ${token}`,
+    'Accept': 'application/vnd.github+json',
+    'Content-Type': 'application/json',
+    'X-GitHub-Api-Version': GITHUB_API_CONFIG.API_VERSION,
+  };
+}
+
+/**
+ * Make a request to GitHub API with unified error handling
+ */
+async function githubRequest(url, options, token) {
+  const response = await fetch(url, {
+    ...options,
+    headers: getHeaders(token),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(`GitHub API error: ${error.message || response.statusText}`);
+  }
+
+  return response.json();
+}
 
 /**
  * Create a pull request
@@ -20,31 +50,14 @@ export async function createPR({
   head,
   base = 'main'
 }) {
-  const response = await fetch(
+  const pr = await githubRequest(
     `https://api.github.com/repos/${owner}/${repo}/pulls`,
     {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Accept': 'application/vnd.github+json',
-        'Content-Type': 'application/json',
-        'X-GitHub-Api-Version': '2022-11-28',
-      },
-      body: JSON.stringify({
-        title,
-        body,
-        head,
-        base,
-      }),
-    }
+      body: JSON.stringify({ title, body, head, base }),
+    },
+    token
   );
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(`GitHub API error: ${error.message || response.statusText}`);
-  }
-
-  const pr = await response.json();
 
   return {
     success: true,
@@ -67,26 +80,14 @@ export async function commentOnPR({
   pr_number,
   body
 }) {
-  const response = await fetch(
+  const comment = await githubRequest(
     `https://api.github.com/repos/${owner}/${repo}/issues/${pr_number}/comments`,
     {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Accept': 'application/vnd.github+json',
-        'Content-Type': 'application/json',
-        'X-GitHub-Api-Version': '2022-11-28',
-      },
       body: JSON.stringify({ body }),
-    }
+    },
+    token
   );
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(`GitHub API error: ${error.message || response.statusText}`);
-  }
-
-  const comment = await response.json();
 
   return {
     success: true,
@@ -106,25 +107,11 @@ export async function getPR({
   repo,
   pr_number
 }) {
-  const response = await fetch(
+  const pr = await githubRequest(
     `https://api.github.com/repos/${owner}/${repo}/pulls/${pr_number}`,
-    {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Accept': 'application/vnd.github+json',
-        'Content-Type': 'application/json',
-        'X-GitHub-Api-Version': '2022-11-28',
-      },
-    }
+    { method: 'GET' },
+    token
   );
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(`GitHub API error: ${error.message || response.statusText}`);
-  }
-
-  const pr = await response.json();
 
   return {
     success: true,
@@ -150,25 +137,11 @@ export async function listPRs({
   repo,
   state = 'open'
 }) {
-  const response = await fetch(
+  const prs = await githubRequest(
     `https://api.github.com/repos/${owner}/${repo}/pulls?state=${state}&per_page=${GITHUB_API_CONFIG.PER_PAGE}`,
-    {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Accept': 'application/vnd.github+json',
-        'Content-Type': 'application/json',
-        'X-GitHub-Api-Version': '2022-11-28',
-      },
-    }
+    { method: 'GET' },
+    token
   );
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(`GitHub API error: ${error.message || response.statusText}`);
-  }
-
-  const prs = await response.json();
 
   if (prs.length === 0) {
     return {
@@ -201,33 +174,18 @@ export async function mergePR({
   commit_title,
   commit_message
 }) {
-  const body = {
-    merge_method,
-  };
-
+  const body = { merge_method };
   if (commit_title) body.commit_title = commit_title;
   if (commit_message) body.commit_message = commit_message;
 
-  const response = await fetch(
+  const result = await githubRequest(
     `https://api.github.com/repos/${owner}/${repo}/pulls/${pr_number}/merge`,
     {
       method: 'PUT',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Accept': 'application/vnd.github+json',
-        'Content-Type': 'application/json',
-        'X-GitHub-Api-Version': '2022-11-28',
-      },
       body: JSON.stringify(body),
-    }
+    },
+    token
   );
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(`GitHub API error: ${error.message || response.statusText}`);
-  }
-
-  const result = await response.json();
 
   return {
     success: true,
