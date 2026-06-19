@@ -52,7 +52,7 @@ process.stdin.on('end', async () => {
 });
 
 /**
- * Analyze diff and extract statistics
+ * Analyze diff and extract statistics with security and quality checks
  */
 function analyzeDiff(diff) {
   const lines = diff.split('\n');
@@ -61,62 +61,358 @@ function analyzeDiff(diff) {
     additions: 0,
     deletions: 0,
     hasTests: false,
-    hasDocChanges: false
+    hasDocChanges: false,
+    breakingChanges: [],
+    securityRisks: [],
+    maintainabilityIssues: [],
+    separationConcerns: [],
+    testCoverage: { modified: 0, tested: 0 },
+    refactorSuggestions: []
   };
 
+  let currentFile = '';
+  const modifiedFiles = new Set();
+  const testFiles = new Set();
+
   for (const line of lines) {
+    // Track current file
     if (line.startsWith('diff --git')) {
       const match = line.match(/b\/(.*?)$/);
-      if (match) stats.filesChanged.add(match[1]);
+      if (match) {
+        currentFile = match[1];
+        stats.filesChanged.add(currentFile);
+
+        // Track test vs implementation files
+        if (currentFile.includes('.test.') || currentFile.includes('.spec.') || currentFile.includes('test.js')) {
+          testFiles.add(currentFile);
+          stats.hasTests = true;
+        } else if (currentFile.match(/\.(js|ts|jsx|tsx|py|java|go|rb)$/)) {
+          modifiedFiles.add(currentFile);
+        }
+      }
     }
+
+    // Count additions/deletions
     if (line.startsWith('+') && !line.startsWith('+++')) stats.additions++;
     if (line.startsWith('-') && !line.startsWith('---')) stats.deletions++;
-    if (line.includes('test.js') || line.includes('.test.') || line.includes('.spec.')) {
-      stats.hasTests = true;
-    }
+
+    // Doc changes
     if (line.includes('README') || line.includes('.md')) {
       stats.hasDocChanges = true;
     }
+
+    // SECURITY CHECKS
+    // Hardcoded secrets/credentials
+    if (line.startsWith('+') && !line.startsWith('+++')) {
+      if (line.match(/(password|secret|api[_-]?key|token|private[_-]?key)\s*[=:]\s*["'][^"']{8,}/i)) {
+        stats.securityRisks.push({
+          type: 'Hardcoded Secret',
+          file: currentFile,
+          severity: 'HIGH',
+          detail: 'Possible hardcoded credential detected'
+        });
+      }
+
+      // SQL injection risks
+      if (line.match(/execute\s*\(.*\+|query\s*\(.*\+|\$\{.*\}.*SELECT|eval\s*\(/i)) {
+        stats.securityRisks.push({
+          type: 'SQL Injection Risk',
+          file: currentFile,
+          severity: 'HIGH',
+          detail: 'String concatenation in SQL query detected'
+        });
+      }
+
+      // Command injection
+      if (line.match(/exec\s*\(|system\s*\(|shell_exec|child_process\.exec.*\+/)) {
+        stats.securityRisks.push({
+          type: 'Command Injection Risk',
+          file: currentFile,
+          severity: 'HIGH',
+          detail: 'Potential command injection vulnerability'
+        });
+      }
+
+      // XSS risks
+      if (line.match(/innerHTML|dangerouslySetInnerHTML|document\.write/)) {
+        stats.securityRisks.push({
+          type: 'XSS Risk',
+          file: currentFile,
+          severity: 'MEDIUM',
+          detail: 'Unsafe HTML injection detected'
+        });
+      }
+    }
+
+    // BREAKING CHANGES
+    if (line.startsWith('-') && !line.startsWith('---')) {
+      // Removed public API/exports
+      if (line.match(/export\s+(function|class|const|let|var|default)/)) {
+        stats.breakingChanges.push({
+          file: currentFile,
+          detail: 'Removed or modified exported function/class'
+        });
+      }
+
+      // Changed function signatures
+      if (line.match(/function\s+\w+\s*\([^)]*\)|const\s+\w+\s*=\s*\([^)]*\)\s*=>/)) {
+        const nextLines = lines.slice(lines.indexOf(line), lines.indexOf(line) + 3);
+        if (nextLines.some(l => l.startsWith('+') && l.match(/function|=>/))) {
+          stats.breakingChanges.push({
+            file: currentFile,
+            detail: 'Function signature changed - may break callers'
+          });
+        }
+      }
+    }
+
+    // MAINTAINABILITY ISSUES
+    if (line.startsWith('+') && !line.startsWith('+++')) {
+      // Long functions (heuristic: many lines added in sequence)
+      const trimmed = line.substring(1).trim();
+
+      // TODO comments
+      if (line.match(/\/\/\s*TODO|\/\/\s*FIXME|\/\/\s*HACK/i)) {
+        stats.maintainabilityIssues.push({
+          type: 'TODO/FIXME',
+          file: currentFile,
+          detail: 'Code marked for future work'
+        });
+      }
+
+      // Magic numbers
+      if (trimmed.match(/\b\d{3,}\b/) && !trimmed.match(/^\s*\/\/|^\s*\*/)) {
+        stats.maintainabilityIssues.push({
+          type: 'Magic Number',
+          file: currentFile,
+          detail: 'Consider extracting to named constant'
+        });
+      }
+
+      // Deeply nested code (more than 3 levels)
+      const indentLevel = (line.match(/^\+(\s+)/)?.[1]?.length || 0) / 2;
+      if (indentLevel > 6 && trimmed.match(/^(if|for|while|switch)\s*\(/)) {
+        stats.maintainabilityIssues.push({
+          type: 'Deep Nesting',
+          file: currentFile,
+          detail: 'Consider extracting nested logic to separate functions'
+        });
+      }
+
+      // Console.log in production code
+      if (trimmed.match(/console\.(log|debug|warn)/) && !currentFile.includes('test')) {
+        stats.maintainabilityIssues.push({
+          type: 'Debug Code',
+          file: currentFile,
+          detail: 'Console.log statements should use proper logging'
+        });
+      }
+    }
+
+    // SEPARATION OF CONCERNS
+    if (line.startsWith('+') && !line.startsWith('+++')) {
+      // Business logic in UI components
+      if (currentFile.match(/component|view|page/i) && line.match(/fetch\s*\(|axios\.|query\(/)) {
+        stats.separationConcerns.push({
+          file: currentFile,
+          detail: 'API calls in UI component - consider moving to service layer'
+        });
+      }
+
+      // Mixed responsibilities
+      if (line.match(/class\s+\w+/) && currentFile.length > 300) {
+        stats.separationConcerns.push({
+          file: currentFile,
+          detail: 'Large class - may have multiple responsibilities'
+        });
+      }
+    }
   }
+
+  // Test coverage analysis
+  stats.testCoverage.modified = modifiedFiles.size;
+  stats.testCoverage.tested = testFiles.size;
+
+  // Refactor suggestions based on patterns
+  if (stats.additions > 200 && stats.filesChanged.size === 1) {
+    stats.refactorSuggestions.push('Large single-file change - consider splitting into smaller commits or modules');
+  }
+
+  if (modifiedFiles.size > 10) {
+    stats.refactorSuggestions.push('Many files modified - ensure changes are cohesive and related');
+  }
+
+  if (stats.testCoverage.modified > 0 && stats.testCoverage.tested === 0) {
+    stats.refactorSuggestions.push('No test files modified - consider adding tests for changed code');
+  }
+
+  // Deduplicate issues
+  stats.securityRisks = deduplicateIssues(stats.securityRisks);
+  stats.maintainabilityIssues = deduplicateIssues(stats.maintainabilityIssues);
+  stats.separationConcerns = deduplicateIssues(stats.separationConcerns);
 
   return {
     filesChanged: Array.from(stats.filesChanged),
     additions: stats.additions,
     deletions: stats.deletions,
     hasTests: stats.hasTests,
-    hasDocChanges: stats.hasDocChanges
+    hasDocChanges: stats.hasDocChanges,
+    breakingChanges: stats.breakingChanges,
+    securityRisks: stats.securityRisks,
+    maintainabilityIssues: stats.maintainabilityIssues,
+    separationConcerns: stats.separationConcerns,
+    testCoverage: stats.testCoverage,
+    refactorSuggestions: stats.refactorSuggestions
   };
 }
 
 /**
- * Generate review comment markdown
+ * Deduplicate issues by file and type
+ */
+function deduplicateIssues(issues) {
+  const seen = new Set();
+  return issues.filter(issue => {
+    const key = `${issue.file}:${issue.type}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/**
+ * Generate comprehensive review comment markdown
  */
 function generateReview(stats, diff) {
   let review = '## 🤖 Automated Code Review\n\n';
+
+  // Change Summary
   review += '### 📊 Change Summary\n';
   review += `- **Files changed:** ${stats.filesChanged.length}\n`;
   review += `- **Lines added:** +${stats.additions}\n`;
   review += `- **Lines removed:** -${stats.deletions}\n`;
   review += `- **Net change:** ${stats.additions - stats.deletions > 0 ? '+' : ''}${stats.additions - stats.deletions}\n\n`;
 
+  // Security Risks (CRITICAL)
+  if (stats.securityRisks.length > 0) {
+    review += '### 🚨 Security Risks\n\n';
+    stats.securityRisks.forEach(risk => {
+      const emoji = risk.severity === 'HIGH' ? '🔴' : risk.severity === 'MEDIUM' ? '🟡' : '🟢';
+      review += `${emoji} **${risk.type}** (${risk.severity})\n`;
+      review += `- File: \`${risk.file}\`\n`;
+      review += `- ${risk.detail}\n\n`;
+    });
+  }
+
+  // Breaking Changes
+  if (stats.breakingChanges.length > 0) {
+    review += '### ⚠️ Potential Breaking Changes\n\n';
+    stats.breakingChanges.forEach(change => {
+      review += `- \`${change.file}\`: ${change.detail}\n`;
+    });
+    review += '\n';
+  }
+
+  // Test Coverage
+  review += '### 🧪 Test Coverage\n';
+  if (stats.testCoverage.modified > 0) {
+    const coverageRatio = stats.testCoverage.tested / stats.testCoverage.modified;
+    if (stats.testCoverage.tested === 0) {
+      review += '- ❌ No test files modified for code changes\n';
+      review += `- ${stats.testCoverage.modified} implementation file(s) changed with no corresponding tests\n`;
+    } else if (coverageRatio < 0.5) {
+      review += '- ⚠️ Limited test coverage\n';
+      review += `- ${stats.testCoverage.tested} test file(s) for ${stats.testCoverage.modified} implementation file(s)\n`;
+    } else {
+      review += '- ✅ Good test coverage\n';
+      review += `- ${stats.testCoverage.tested} test file(s) for ${stats.testCoverage.modified} implementation file(s)\n`;
+    }
+  } else if (stats.hasTests) {
+    review += '- ✅ Test files included\n';
+  } else {
+    review += '- ℹ️ No test files detected\n';
+  }
+  review += '\n';
+
+  // Maintainability Issues
+  if (stats.maintainabilityIssues.length > 0) {
+    review += '### 🔧 Maintainability Concerns\n\n';
+    const grouped = groupBy(stats.maintainabilityIssues, 'type');
+    Object.keys(grouped).forEach(type => {
+      review += `**${type}** (${grouped[type].length} instance${grouped[type].length > 1 ? 's' : ''})\n`;
+      grouped[type].slice(0, 3).forEach(issue => {
+        review += `- \`${issue.file}\`: ${issue.detail}\n`;
+      });
+      if (grouped[type].length > 3) {
+        review += `- ... and ${grouped[type].length - 3} more\n`;
+      }
+      review += '\n';
+    });
+  }
+
+  // Separation of Concerns
+  if (stats.separationConcerns.length > 0) {
+    review += '### 🏗️ Architecture & Separation of Concerns\n\n';
+    stats.separationConcerns.forEach(concern => {
+      review += `- \`${concern.file}\`: ${concern.detail}\n`;
+    });
+    review += '\n';
+  }
+
+  // Refactor Suggestions
+  if (stats.refactorSuggestions.length > 0) {
+    review += '### 💡 Refactor Suggestions\n\n';
+    stats.refactorSuggestions.forEach(suggestion => {
+      review += `- ${suggestion}\n`;
+    });
+    review += '\n';
+  }
+
+  // Modified Files
   review += '### 📝 Modified Files\n';
   stats.filesChanged.forEach(file => {
     review += `- \`${file}\`\n`;
   });
   review += '\n';
 
-  review += '### ✅ Checks\n';
-  review += stats.hasTests ? '- ✅ Test files included\n' : '- ⚠️ No test files detected\n';
+  // Documentation
+  review += '### 📚 Documentation\n';
   review += stats.hasDocChanges ? '- ✅ Documentation updated\n' : '- ℹ️ No documentation changes\n';
   review += '\n';
 
+  // Cleanup PR recognition
   if (stats.deletions > stats.additions * 2) {
     review += '### 🎉 Cleanup PR\n';
     review += 'This PR removes more code than it adds - nice cleanup work!\n\n';
   }
 
-  review += '---\n';
-  review += '*This review was automatically generated by the GitHub MCP server*';
+  // Overall assessment
+  review += '### 📋 Overall Assessment\n';
+  const criticalIssues = stats.securityRisks.filter(r => r.severity === 'HIGH').length + stats.breakingChanges.length;
+  if (criticalIssues > 0) {
+    review += `⚠️ **${criticalIssues} critical issue${criticalIssues > 1 ? 's' : ''} found** - Please review before merging\n`;
+  } else if (stats.maintainabilityIssues.length > 5 || stats.separationConcerns.length > 3) {
+    review += '⚠️ Several maintainability concerns detected - Consider addressing before merge\n';
+  } else if (stats.securityRisks.length === 0 && stats.testCoverage.tested > 0) {
+    review += '✅ Looks good! No critical issues detected\n';
+  } else {
+    review += 'ℹ️ Review complete - Some suggestions provided above\n';
+  }
+
+  review += '\n---\n';
+  review += '*This review was automatically generated by the GitHub MCP server*\n';
+  review += '*Note: This is a static analysis tool and may have false positives. Always use human judgment.*';
 
   return review;
+}
+
+/**
+ * Group array of objects by a property
+ */
+function groupBy(array, property) {
+  return array.reduce((acc, item) => {
+    const key = item[property];
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(item);
+    return acc;
+  }, {});
 }
