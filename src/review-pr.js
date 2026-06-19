@@ -25,6 +25,8 @@ const THRESHOLDS = {
 };
 
 // Pre-compiled regex patterns for performance
+// NOTE: These are regex PATTERNS for detecting issues, not actual vulnerable code.
+// Security scanners may flag these as false positives.
 const PATTERNS = {
   // File patterns
   DIFF_FILE: /b\/(.*?)$/,
@@ -32,7 +34,7 @@ const PATTERNS = {
   IMPLEMENTATION_FILE: /\.(js|ts|jsx|tsx|py|java|go|rb)$/,
   DOC_FILE: /README|\.md/,
 
-  // Security patterns
+  // Security patterns - used to DETECT vulnerabilities in scanned code
   SECRET: /(password|secret|api[_-]?key|token|private[_-]?key)\s*[=:]\s*["'][^"']{8,}/i,
   SQL_INJECTION: /execute\s*\(.*\+|query\s*\(.*\+|\$\{.*\}.*SELECT|eval\s*\(/i,
   COMMAND_INJECTION: /exec\s*\(|system\s*\(|shell_exec|child_process\.exec.*\+/,
