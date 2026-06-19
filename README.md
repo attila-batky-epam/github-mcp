@@ -192,3 +192,103 @@ When published to npm:
 - ❌ Development files excluded
 
 End users get a ready-to-use package with no build step required!
+
+## Future Extensions
+
+This library currently focuses on core PR and merging workflows. Potential future extensions include:
+
+### Core Workflow Operations
+- **Branch Management**: `create_branch`, `list_branches`, `delete_branch`, `compare_branches`
+- **Issue Management**: `create_issue`, `list_issues`, `update_issue`, `close_issue`, `add_issue_comment`
+- **Commit Operations**: `get_commit`, `list_commits` with filtering
+- **Repository Content**: `get_file`, `update_file`, `get_directory` for direct file operations
+
+### CI/CD Integration
+- **GitHub Actions**: `trigger_workflow`, `get_workflow_runs`, `get_run_logs`
+- **Commit Status API**: `create_commit_status`, `get_commit_statuses` for external CI
+- **Enhanced PR Details**: `get_pr_files`, `get_pr_commits`, `request_reviewers`
+
+### Advanced Features
+- **Release Management**: `create_release`, `list_releases`, `create_tag`
+- **Repository Search**: `search_code`, `search_issues`, `search_commits`
+- **Security**: `list_security_advisories`, `get_dependabot_alerts`
+
+The automated PR review tool (`review-pr.ts`) serves as a CI/CD quality gate and is intentionally separate from the core MCP library.
+
+## Development Retrospective
+
+This project was built through human-AI collaboration using Claude Code. Key learnings:
+
+### What Required Human Guidance
+
+**1. Git Workflow Discipline**
+- **Issue**: AI initially committed directly to `main` branch
+- **Fix**: User enforced branch-first workflow, set up branch protection via GitHub API
+- **Lesson**: AI needs explicit constraints on destructive/risky operations
+
+**2. Code Quality & Performance**
+- **Issue**: Initial test code was verbose (385 lines for github-api tests)
+- **Iterations**: 3 self-audit rounds reduced to 227 lines (-41%) while maintaining 100% coverage
+- **Approach**: User requested "performance/cleanup audit" prompts
+- **Lesson**: AI benefits from explicit optimization passes after generation
+
+**3. Scope Management**
+- **Issue**: AI wanted to add lint rules, prettier, complex tooling
+- **Fix**: User kept scope minimal ("we don't need that")
+- **Lesson**: AI tends toward over-engineering; human judgment keeps it practical
+
+**4. Test Strategy**
+- **Issue**: Initial approach tried to test implementation files with actual logic
+- **Pivot**: User guided toward testing the extracted pure logic (patterns, analysis)
+- **Result**: 100% coverage on `github-api.ts`, meaningful tests on `review-pr.ts`
+- **Lesson**: AI can test effectively when given clear architectural direction
+
+**5. CI Pipeline Architecture**
+- **Issue**: Initial single test job combined unit tests + coverage
+- **Improvement**: User requested split into fast unit test job + coverage job
+- **Result**: 13s fast feedback vs 16s+ combined, parallel execution
+- **Lesson**: AI implements well but human insight drives architectural improvements
+
+### What Worked Without Changes
+
+**1. TypeScript Migration**
+- AI correctly converted JS → TS with proper types
+- Type definitions for GitHub API were accurate
+- No type errors after initial conversion
+
+**2. Test Infrastructure Setup**
+- Vitest configuration with coverage was correct first try
+- Test patterns (mocking, helpers, DRY principles) were sound
+- Coverage thresholds appropriately set
+
+**3. GitHub API Integration**
+- API request patterns were correct
+- Error handling was appropriate
+- Token authentication worked as expected
+
+**4. Documentation**
+- README updates were comprehensive
+- Code examples were accurate
+- Installation instructions were clear
+
+### Collaboration Pattern
+
+**Effective workflow:**
+1. User provides high-level requirement ("add unit testing")
+2. AI implements full solution
+3. User requests optimization ("cleanup audit round")
+4. AI refactors with metrics (LoC reduction, coverage maintained)
+5. User approves or redirects
+
+**Key principle**: AI is thorough but needs human judgment on:
+- When to stop adding features
+- When "good enough" beats "perfect"
+- What trade-offs to make (verbosity vs DRY, speed vs completeness)
+
+### Metrics
+
+- **Project Duration**: ~3 days of iterative development
+- **Test Coverage**: 100% on core API, 100% on review logic
+- **Code Quality**: 227 lines of tests (from 385), optimized CI pipeline
+- **Git Discipline**: 14 PRs, 0 direct main commits after enforcement
+- **CI Performance**: 20% pipeline speedup with parallel jobs
