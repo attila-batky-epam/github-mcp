@@ -9,7 +9,7 @@
 import { commentOnPR } from './github-api.js';
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-const PR_NUMBER = parseInt(process.env.PR_NUMBER);
+const PR_NUMBER = parseInt(process.env.PR_NUMBER || '0');
 const REPO_OWNER = process.env.REPO_OWNER;
 const REPO_NAME = process.env.REPO_NAME;
 
@@ -22,7 +22,7 @@ const THRESHOLDS = {
   PAGINATION_SIZE: 30,
   LOW_TEST_COVERAGE_RATIO: 0.5,
   MAX_GROUPED_ISSUES: 3,
-};
+} as const;
 
 // Pre-compiled regex patterns for performance
 // NOTE: These are regex PATTERNS for detecting issues, not actual vulnerable code.
@@ -55,7 +55,50 @@ const PATTERNS = {
   UI_COMPONENT_FILE: /component|view|page/i,
   API_CALL: /fetch\s*\(|axios\.|query\(/,
   CLASS_DECLARATION: /class\s+\w+/,
-};
+} as const;
+
+interface SecurityRisk {
+  type: string;
+  file: string;
+  severity: 'HIGH' | 'MEDIUM' | 'LOW';
+  detail: string;
+}
+
+interface BreakingChange {
+  file: string;
+  detail: string;
+}
+
+interface MaintainabilityIssue {
+  type: string;
+  file: string;
+  detail: string;
+  [key: string]: unknown;
+}
+
+interface SeparationConcern {
+  file: string;
+  detail: string;
+}
+
+interface TestCoverage {
+  modified: number;
+  tested: number;
+}
+
+interface DiffStats {
+  filesChanged: string[];
+  additions: number;
+  deletions: number;
+  hasTests: boolean;
+  hasDocChanges: boolean;
+  breakingChanges: BreakingChange[];
+  securityRisks: SecurityRisk[];
+  maintainabilityIssues: MaintainabilityIssue[];
+  separationConcerns: SeparationConcern[];
+  testCoverage: TestCoverage;
+  refactorSuggestions: string[];
+}
 
 if (!GITHUB_TOKEN || !PR_NUMBER || !REPO_OWNER || !REPO_NAME) {
   console.error('Error: Missing required environment variables');
@@ -75,7 +118,7 @@ process.stdin.on('end', async () => {
     const stats = analyzeDiff(diffContent);
 
     // Generate review comment
-    const reviewComment = generateReview(stats, diffContent);
+    const reviewComment = generateReview(stats);
 
     // Post comment via GitHub API
     const result = await commentOnPR({
@@ -90,7 +133,8 @@ process.stdin.on('end', async () => {
     console.log(result.message);
     process.exit(0);
   } catch (error) {
-    console.error('Error posting review:', error.message);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Error posting review:', errorMessage);
     process.exit(1);
   }
 });
@@ -98,25 +142,25 @@ process.stdin.on('end', async () => {
 /**
  * Analyze diff and extract statistics with security and quality checks
  */
-function analyzeDiff(diff) {
+function analyzeDiff(diff: string): DiffStats {
   const lines = diff.split('\n');
   const stats = {
-    filesChanged: new Set(),
+    filesChanged: new Set<string>(),
     additions: 0,
     deletions: 0,
     hasTests: false,
     hasDocChanges: false,
-    breakingChanges: [],
-    securityRisks: [],
-    maintainabilityIssues: [],
-    separationConcerns: [],
+    breakingChanges: [] as BreakingChange[],
+    securityRisks: [] as SecurityRisk[],
+    maintainabilityIssues: [] as MaintainabilityIssue[],
+    separationConcerns: [] as SeparationConcern[],
     testCoverage: { modified: 0, tested: 0 },
-    refactorSuggestions: []
+    refactorSuggestions: [] as string[]
   };
 
   let currentFile = '';
-  const modifiedFiles = new Set();
-  const testFiles = new Set();
+  const modifiedFiles = new Set<string>();
+  const testFiles = new Set<string>();
 
   for (const line of lines) {
     // Track current file
@@ -200,8 +244,9 @@ function analyzeDiff(diff) {
 
       // Changed function signatures
       if (PATTERNS.FUNCTION_SIGNATURE.test(line)) {
-        const nextLines = lines.slice(lines.indexOf(line), lines.indexOf(line) + 3);
-        if (nextLines.some(l => l.startsWith('+') && l.match(/function|=>/))) {
+        const lineIndex = lines.indexOf(line);
+        const nextLines = lines.slice(lineIndex, lineIndex + 3);
+        if (nextLines.some(l => l.startsWith('+') && /function|=>/.test(l))) {
           stats.breakingChanges.push({
             file: currentFile,
             detail: 'Function signature changed - may break callers'
@@ -212,7 +257,6 @@ function analyzeDiff(diff) {
 
     // MAINTAINABILITY ISSUES
     if (line.startsWith('+') && !line.startsWith('+++')) {
-      // Long functions (heuristic: many lines added in sequence)
       const trimmed = line.substring(1).trim();
 
       // TODO comments
@@ -234,7 +278,8 @@ function analyzeDiff(diff) {
       }
 
       // Deeply nested code (more than 3 levels)
-      const indentLevel = (line.match(/^\+(\s+)/)?.[1]?.length || 0) / 2;
+      const indentMatch = line.match(/^\+(\s+)/);
+      const indentLevel = indentMatch ? indentMatch[1].length / 2 : 0;
       if (indentLevel > THRESHOLDS.DEEP_NESTING_LEVEL && PATTERNS.CONTROL_FLOW.test(trimmed)) {
         stats.maintainabilityIssues.push({
           type: 'Deep Nesting',
@@ -313,10 +358,10 @@ function analyzeDiff(diff) {
 /**
  * Deduplicate issues by file and type
  */
-function deduplicateIssues(issues) {
-  const seen = new Set();
+function deduplicateIssues<T extends { file: string; type?: string }>(issues: T[]): T[] {
+  const seen = new Set<string>();
   return issues.filter(issue => {
-    const key = `${issue.file}:${issue.type}`;
+    const key = `${issue.file}:${issue.type ?? 'unknown'}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -326,7 +371,7 @@ function deduplicateIssues(issues) {
 /**
  * Generate comprehensive review comment markdown
  */
-function generateReview(stats, diff) {
+function generateReview(stats: DiffStats): string {
   let review = '## 🤖 Automated Code Review\n\n';
 
   // Change Summary
@@ -452,11 +497,11 @@ function generateReview(stats, diff) {
 /**
  * Group array of objects by a property
  */
-function groupBy(array, property) {
+function groupBy<T extends { [key: string]: unknown }>(array: T[], property: keyof T): Record<string, T[]> {
   return array.reduce((acc, item) => {
-    const key = item[property];
+    const key = String(item[property]);
     if (!acc[key]) acc[key] = [];
     acc[key].push(item);
     return acc;
-  }, {});
+  }, {} as Record<string, T[]>);
 }
