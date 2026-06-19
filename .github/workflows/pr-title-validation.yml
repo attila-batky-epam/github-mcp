@@ -1,0 +1,95 @@
+name: PR Title Validation
+
+on:
+  pull_request:
+    types: [opened, reopened, edited, synchronize]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  validate-pr-title:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate PR title matches branch ticket
+        run: |
+          BRANCH_NAME="${{ github.head_ref }}"
+          PR_TITLE="${{ github.event.pull_request.title }}"
+
+          echo "Branch: $BRANCH_NAME"
+          echo "PR Title: $PR_TITLE"
+
+          # Extract ticket number from branch name (e.g., GHMCP-123 from feature/GHMCP-123-description)
+          if [[ $BRANCH_NAME =~ (GHMCP-[0-9]+) ]]; then
+            TICKET_NUMBER="${BASH_REMATCH[1]}"
+            echo "Ticket number from branch: $TICKET_NUMBER"
+
+            # Check if PR title contains the ticket number
+            if [[ $PR_TITLE =~ $TICKET_NUMBER ]]; then
+              echo "✅ PR title contains ticket number '$TICKET_NUMBER'"
+              exit 0
+            else
+              echo "❌ PR title does not contain ticket number '$TICKET_NUMBER'"
+              echo ""
+              echo "PR Title: $PR_TITLE"
+              echo "Expected to contain: $TICKET_NUMBER"
+              echo ""
+              echo "Examples of valid PR titles:"
+              echo "  - $TICKET_NUMBER: Add user authentication"
+              echo "  - Add user auth ($TICKET_NUMBER)"
+              echo "  - [$TICKET_NUMBER] Implement login feature"
+              exit 1
+            fi
+          else
+            echo "⚠️ Could not extract ticket number from branch name"
+            echo "Branch naming validation should catch this"
+            exit 0
+          fi
+
+      - name: Post comment on PR
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const branchName = context.payload.pull_request.head.ref;
+            const prTitle = context.payload.pull_request.title;
+
+            // Extract ticket number
+            const match = branchName.match(/GHMCP-[0-9]+/);
+            if (!match) {
+              return; // Branch naming check will handle this
+            }
+
+            const ticketNumber = match[0];
+
+            const comment = `## ❌ PR Title Validation Failed
+
+            Your PR title must include the ticket number from the branch name.
+
+            ### Current Status
+            - **Branch:** \`${branchName}\`
+            - **Ticket:** \`${ticketNumber}\`
+            - **PR Title:** "${prTitle}"
+
+            ### Problem
+            The PR title does not contain the ticket number \`${ticketNumber}\`.
+
+            ### Valid Examples
+            - \`${ticketNumber}: Add user authentication\`
+            - \`Add user auth (${ticketNumber})\`
+            - \`[${ticketNumber}] Implement login feature\`
+            - \`${ticketNumber} - Fix login error\`
+
+            ### How to Fix
+            Edit your PR title to include \`${ticketNumber}\` anywhere in the title.
+
+            ---
+            *This helps maintain traceability between PRs and tickets.*`;
+
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: comment
+            });
