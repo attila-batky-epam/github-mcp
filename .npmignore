@@ -1,0 +1,28 @@
+# Source files (users get compiled JS only)
+src/
+tsconfig.json
+
+# Development files
+.github/
+.claude/
+*.log
+
+# Environment and local config
+.env
+.env.*
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+
+# Test files (if we add them later)
+test/
+*.test.ts
+*.spec.ts
+
+# Documentation that's not needed in the package
+examples/

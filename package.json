@@ -4,6 +4,14 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "github-mcp": "./dist/index.js"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
@@ -11,12 +19,15 @@
     "review-pr": "tsx src/review-pr.ts",
     "clean": "rm -rf dist",
     "prebuild": "npm run clean",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "prepack": "npm run build"
   },
   "keywords": [
     "mcp",
     "github",
-    "git"
+    "git",
+    "model-context-protocol",
+    "claude"
   ],
   "author": "",
   "license": "ISC",
