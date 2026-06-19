@@ -3,6 +3,11 @@
  * Pure functions for GitHub operations - no MCP protocol code
  */
 
+// API Configuration
+const GITHUB_API_CONFIG = {
+  PER_PAGE: 30,
+};
+
 /**
  * Create a pull request
  */
@@ -146,7 +151,7 @@ export async function listPRs({
   state = 'open'
 }) {
   const response = await fetch(
-    `https://api.github.com/repos/${owner}/${repo}/pulls?state=${state}&per_page=30`,
+    `https://api.github.com/repos/${owner}/${repo}/pulls?state=${state}&per_page=${GITHUB_API_CONFIG.PER_PAGE}`,
     {
       method: 'GET',
       headers: {
